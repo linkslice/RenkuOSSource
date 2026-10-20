@@ -1081,6 +1081,7 @@ NetServer::_JoinNetwork(const BMessage& message, const BNetworkAddress* address,
 	BMessenger wpaSupplicant(kWPASupplicantSignature);
 	if (!wpaSupplicant.IsValid()) {
 		// The wpa_supplicant isn't running yet, we may join ourselves.
+		bool joined = false;
 		if (!askForConfig
 			&& network.authentication_mode == B_NETWORK_AUTHENTICATION_NONE) {
 			// We can join this network ourselves.
@@ -1091,12 +1092,51 @@ NetServer::_JoinNetwork(const BMessage& message, const BNetworkAddress* address,
 					strerror(status));
 				return status;
 			}
+			joined = true;
 		}
 
 		// We need the supplicant, try to launch it.
 		status_t status = be_roster->Launch(kWPASupplicantSignature);
-		if (status != B_OK && status != B_ALREADY_RUNNING)
+		if (status != B_OK && status != B_ALREADY_RUNNING) {
+			if (joined)
+				return B_OK;
+
+			// Without a supplicant, devices that do the WPA handshake
+			// themselves (FullMAC devices) can still join protected
+			// networks: hand them the passphrase directly.
+			if (password != NULL
+				&& (network.authentication_mode == B_NETWORK_AUTHENTICATION_WPA
+					|| network.authentication_mode
+						== B_NETWORK_AUTHENTICATION_WPA2)) {
+				size_t keyLength = strlen(password);
+				size_t nameLength = strlen(network.name);
+				if (keyLength < 8 || keyLength > 63
+					|| nameLength > IEEE80211_NWID_LEN) {
+					return B_BAD_VALUE;
+				}
+				size_t length = sizeof(ieee80211_haiku_join_req) + keyLength;
+				ieee80211_haiku_join_req* join
+					= (ieee80211_haiku_join_req*)calloc(1, length);
+				if (join == NULL)
+					return B_NO_MEMORY;
+				memcpy(join->i_nwid, network.name, nameLength);
+				join->i_nwid_len = nameLength;
+				join->i_authentication_mode = network.authentication_mode;
+				join->i_key_mode = 0x80000000;
+					// the key is a passphrase, not a PMK
+				join->i_key_len = keyLength;
+				memcpy(join->i_key, password, keyLength);
+				status = set_80211(deviceName, IEEE80211_IOC_HAIKU_JOIN, join,
+					length);
+				memset(join, 0, length);
+				free(join);
+				if (status != B_OK) {
+					fprintf(stderr, "%s: joining protected network without "
+						"wpa_supplicant failed: %s\n", name, strerror(status));
+				}
+			}
 			return status;
+		}
 
 		wpaSupplicant.SetTo(kWPASupplicantSignature);
 		if (!wpaSupplicant.IsValid())
@@ -1159,13 +1199,12 @@ NetServer::_LeaveNetwork(const BMessage& message)
 	wireless_network network;
 
 	uint32 cookie = 0;
-	if (device.GetNextAssociatedNetwork(cookie, network) != B_OK
-		|| network.authentication_mode != B_NETWORK_AUTHENTICATION_NONE) {
-		// We didn't join ourselves, we can't do much.
+	if (device.GetNextAssociatedNetwork(cookie, network) != B_OK) {
+		// We are not connected.
 		return B_ERROR;
 	}
-
-	// We joined ourselves, so we can just disassociate again.
+	// Without a supplicant, we (or the device firmware) did the joining,
+	// so we can just disassociate again.
 	ieee80211req_mlme mlmeRequest;
 	memset(&mlmeRequest, 0, sizeof(mlmeRequest));
 	mlmeRequest.im_op = IEEE80211_MLME_DISASSOC;
