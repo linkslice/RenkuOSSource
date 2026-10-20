@@ -997,8 +997,18 @@ free_vnode(struct vnode* vnode, bool reenter)
 	// if the vnode won't be deleted, in which case the changes
 	// will be discarded
 
-	if (!vnode->IsRemoved() && HAS_FS_CALL(vnode, fsync))
+	if (!vnode->IsRemoved() && HAS_FS_CALL(vnode, fsync)) {
+		// The file system may look the node up again while writing it back
+		// (e.g. BFS calls acquire_vnode() from bfs_io()), which panics with
+		// "node wasn't used!" when the reference count is 0. Hold a temporary
+		// reference during the fsync, and wait for any reference taken in
+		// the meantime to be released again before the node goes away.
+		atomic_set(&vnode->ref_count, 1);
 		FS_CALL(vnode, fsync, false);
+		while (atomic_get(&vnode->ref_count) > 1)
+			snooze(1000);
+		atomic_set(&vnode->ref_count, 0);
+	}
 
 	// Note: If this vnode has a cache attached, there will still be two
 	// references to that cache at this point. The last one belongs to the vnode
