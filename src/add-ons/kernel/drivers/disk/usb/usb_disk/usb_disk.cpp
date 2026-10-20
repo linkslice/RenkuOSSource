@@ -240,8 +240,10 @@ usb_disk_transfer_data(disk_device *device, bool directionIn, const transfer_dat
 
 	mutex_unlock(&device->lock);
 	do {
+		// Some USB sticks under sustained write load take longer than 10 s
+		// to complete a transfer.
 		result = acquire_sem_etc(device->notify, 1, B_RELATIVE_TIMEOUT,
-			10 * 1000 * 1000);
+			30 * 1000 * 1000);
 		if (result == B_TIMED_OUT) {
 			// Cancel the transfer and collect the sem that should now be
 			// released through the callback on cancel. Handling of device
