@@ -15,6 +15,18 @@
  *  - DMA on the BCM2711 is not cache coherent.
  * To keep things simple and robust, this driver uses PIO transfers and polls
  * the interrupt status register instead of relying on interrupts.
+ *
+ * Written for Haiku/RenkuOS from the SD Host Controller Simplified
+ * Specification and the Raspberry Pi firmware mailbox documentation. The
+ * controller quirks above are hardware facts; a provenance check against
+ * the drivers below found no shared code. Thanks to their authors, whose
+ * work documents this hardware and was used to check this driver:
+ *  - Linux sdhci-iproc.c and sdhci-brcmstb.c (Broadcom Corporation,
+ *    GPL-2.0)
+ *  - U-Boot bcm2835_sdhci.c (GPL-2.0) and bcmstb_sdhci.c (GPL-2.0+)
+ *  - FreeBSD bcm2835_sdhci.c (BSD-2-Clause)
+ *  - John Cronin's emmc.cpp as modified for Circle by R. Stange (MIT)
+ *  - Plan 9/9front emmc.c and the bcm64 sdhc.c (MIT)
  */
 
 
