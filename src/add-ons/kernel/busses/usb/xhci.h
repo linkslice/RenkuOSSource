@@ -35,7 +35,9 @@ class XHCIRootHub;
 // cache TRBs past the end of a ring or TD, including past Link TRBs. For
 // those, XHCI::fTrbPad is set to this many unused (zeroed) TRBs kept after
 // every TRB array, so that prefetched TRBs are never ones we write later.
-// Other controllers don't get any padding.
+// Other controllers don't get any padding. Linux handles the same VL805
+// behaviour with its XHCI_TRB_OVERFETCH quirk (xhci-pci.c, xhci-mem.c);
+// thanks to its authors for documenting it. No code was taken from there.
 #define XHCI_TRB_PREFETCH_PAD	32
 
 // Maximum number of deferred endpoint recovery requests queued at once.
